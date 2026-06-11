@@ -223,7 +223,8 @@ Result:
 
 ```json
 {
-  "message": "Webhook processed successfully"
+  "message": "Webhook accepted",
+  "result": "processed"
 }
 ```
 
@@ -260,7 +261,8 @@ curl --location 'http://localhost:3000/webhooks/payment' \
 
 ```json
 {
-  "message": "Webhook processed successfully"
+  "message": "Webhook accepted",
+  "result": "processed"
 }
 ```
 
@@ -292,7 +294,8 @@ Since `evt_1001` already exists in the `webhook_events` table, the event is igno
 
 ```json
 {
-  "message": "Webhook already processed"
+  "message": "Webhook accepted",
+  "result": "duplicate"
 }
 ```
 
