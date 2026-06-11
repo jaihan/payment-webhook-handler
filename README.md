@@ -350,33 +350,3 @@ Status:
 ```http
 400 Bad Request
 ```
-
----
-
-## Idempotency Flow
-
-```text
-Webhook Received
-       │
-       ▼
-Verify Secret
-       │
-       ▼
-Begin Transaction
-       │
-       ▼
-Insert event_id into webhook_events
-       │
-       ├── Exists?
-       │      │
-       │      └── Yes → Commit → Return 200
-       │
-       ▼
-Update orders.status
-       │
-       ▼
-Commit Transaction
-       │
-       ▼
-Return 200
-```
