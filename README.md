@@ -69,21 +69,6 @@ http://localhost:3000
 
 ---
 
-## Example Request
-
-```bash
-curl -X POST http://localhost:3000/webhooks/payment \
-  -H "Content-Type: application/json" \
-  -H "x-webhook-secret: super-secret-key" \
-  -d '{
-    "eventId":"evt_123",
-    "eventType":"payment.success",
-    "orderId":"order_001"
-  }'
-```
-
----
-
 ## Supported Events
 
 - payment.success
@@ -143,16 +128,21 @@ x-webhook-secret: my-secret-key
 
 ## Request Payload
 
+### Required Fields
+
+| Field     | Type   | Description                                           |
+| --------- | ------ | ----------------------------------------------------- |
+| eventId   | string | Unique identifier for the webhook event               |
+| eventType | string | Supported values: `payment.success`, `payment.failed` |
+| orderId   | UUID   | Existing order identifier                             |
+
 ### payment.success
 
 ```json
 {
-  "eventId": "evt_001",
+  "eventId": "evt_1001",
   "eventType": "payment.success",
-  "orderId": "order_123",
-  "amount": 99.99,
-  "currency": "USD",
-  "timestamp": "2026-06-11T10:00:00Z"
+  "orderId": "11111111-1111-1111-1111-111111111111"
 }
 ```
 
@@ -160,11 +150,26 @@ x-webhook-secret: my-secret-key
 
 ```json
 {
-  "eventId": "evt_002",
+  "eventId": "evt_1002",
   "eventType": "payment.failed",
-  "orderId": "order_123",
-  "amount": 99.99,
-  "currency": "USD",
+  "orderId": "22222222-2222-2222-2222-222222222222"
+}
+```
+
+### Optional Provider Fields
+
+Additional fields are accepted and stored in the `payload` column of the `webhook_events` table.
+
+Example:
+
+```json
+{
+  "eventId": "evt_1003",
+  "eventType": "payment.success",
+  "orderId": "55555555-5555-5555-5555-555555555555",
+  "amount": 799.0,
+  "currency": "SGD",
+  "provider": "stripe",
   "timestamp": "2026-06-11T10:00:00Z"
 }
 ```
@@ -180,38 +185,39 @@ curl --location 'http://localhost:3000/webhooks/payment' \
 --header 'Content-Type: application/json' \
 --header 'x-webhook-secret: my-secret-key' \
 --data '{
-  "eventId": "evt_001",
+  "eventId": "evt_1001",
   "eventType": "payment.success",
-  "orderId": "order_123",
-  "amount": 99.99,
-  "currency": "USD",
-  "timestamp": "2026-06-11T10:00:00Z"
+  "orderId": "11111111-1111-1111-1111-111111111111"
 }'
 ```
 
 ### Database Before
 
 ```sql
-SELECT * FROM orders WHERE id = 'order_123';
+SELECT id, status
+FROM orders
+WHERE id = '11111111-1111-1111-1111-111111111111';
 ```
 
 Result:
 
-| id        | status  |
-| --------- | ------- |
-| order_123 | pending |
+| id                                   | status  |
+| ------------------------------------ | ------- |
+| 11111111-1111-1111-1111-111111111111 | pending |
 
 ### Database After
 
 ```sql
-SELECT * FROM orders WHERE id = 'order_123';
+SELECT id, status
+FROM orders
+WHERE id = '11111111-1111-1111-1111-111111111111';
 ```
 
 Result:
 
-| id        | status |
-| --------- | ------ |
-| order_123 | paid   |
+| id                                   | status |
+| ------------------------------------ | ------ |
+| 11111111-1111-1111-1111-111111111111 | paid   |
 
 ### Response
 
@@ -238,20 +244,17 @@ curl --location 'http://localhost:3000/webhooks/payment' \
 --header 'Content-Type: application/json' \
 --header 'x-webhook-secret: my-secret-key' \
 --data '{
-  "eventId": "evt_002",
+  "eventId": "evt_1002",
   "eventType": "payment.failed",
-  "orderId": "order_123",
-  "amount": 99.99,
-  "currency": "USD",
-  "timestamp": "2026-06-11T10:00:00Z"
+  "orderId": "22222222-2222-2222-2222-222222222222"
 }'
 ```
 
 ### Database After
 
-| id        | status |
-| --------- | ------ |
-| order_123 | failed |
+| id                                   | status |
+| ------------------------------------ | ------ |
+| 22222222-2222-2222-2222-222222222222 | failed |
 
 ### Response
 
@@ -271,19 +274,19 @@ Status:
 
 ## Example: Duplicate Webhook
 
-The provider may retry the same event multiple times.
+The payment provider may retry delivery of the same event.
 
 ### Request
 
 ```json
 {
-  "eventId": "evt_001",
+  "eventId": "evt_1001",
   "eventType": "payment.success",
-  "orderId": "order_123"
+  "orderId": "11111111-1111-1111-1111-111111111111"
 }
 ```
 
-Since `evt_001` has already been processed, the event is ignored.
+Since `evt_1001` already exists in the `webhook_events` table, the event is ignored.
 
 ### Response
 
@@ -302,12 +305,6 @@ Status:
 ---
 
 ## Example: Invalid Secret
-
-### Request
-
-```http
-x-webhook-secret: wrong-secret
-```
 
 ### Response
 
@@ -335,7 +332,7 @@ Status:
 }
 ```
 
-Missing:
+Missing required fields:
 
 - eventId
 - orderId
@@ -344,7 +341,7 @@ Missing:
 
 ```json
 {
-  "message": "Invalid payload"
+  "message": "Invalid webhook payload"
 }
 ```
 
@@ -365,14 +362,17 @@ Webhook Received
 Verify Secret
        │
        ▼
-Insert eventId into webhook_events
+Begin Transaction
+       │
+       ▼
+Insert event_id into webhook_events
        │
        ├── Exists?
        │      │
-       │      └── Yes → Return 200
+       │      └── Yes → Commit → Return 200
        │
        ▼
-Update Order Status
+Update orders.status
        │
        ▼
 Commit Transaction
